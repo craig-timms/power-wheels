@@ -1,5 +1,18 @@
 #include "PINDEF.h"
 
+// Global BLE APP variables
+int batteryLevel = 20;
+bool reverseDirection = false;
+bool reverseSteering = false;
+int maxPower = 100;
+int reversePowerMax = 20;
+int throttleMaxPowerPos = 100;
+int throttleVsPowerMap = 50;
+bool updatedSettings = false;
+// END
+
+#include "ble_app.h"
+
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6) 
 // const int throttlePin = 32;
 // #define THROTTLE_PIN 36
@@ -76,6 +89,9 @@ int previousPWMValue = 0;
 void setup() {
   Serial.begin(115200);
 
+  ble_setup();
+  Serial.println("Setup complete. Listening for BLE updates...");
+
   // configure LED PWM functionalitites
   ledcSetup(throttle_channel, freq, resolution);
   // attach the channel to the GPIO to be controlled
@@ -122,6 +138,11 @@ void setup() {
 }
 
 void loop() {
+
+  if (updatedSettings == true) {
+    Serial.printf("New Battery Voltage: %d\r\n", batteryLevel); // example of referencing the updated
+    updatedSettings = false;
+  }
   
   // Get throttle input
   throttleValue = read_throttle();
@@ -190,18 +211,18 @@ void loop() {
     }
   }
 
-  Serial.print(throttleValue);
-  Serial.print(",");
-  Serial.print(throttle_out);
-  Serial.print(",");
-  Serial.print(V_BAT);
-  Serial.print(",");
-  Serial.print(V_M);
-  Serial.print(",");
-  Serial.print(I_BAT);
-  Serial.print(",");
-  Serial.print(s_current_time);
-  Serial.println();
+  // Serial.print(throttleValue);
+  // Serial.print(",");
+  // Serial.println(throttle_out);
+  // Serial.print(",");
+  // Serial.print(V_BAT);
+  // Serial.print(",");
+  // Serial.print(V_M);
+  // Serial.print(",");
+  // Serial.print(I_BAT);
+  // Serial.print(",");
+  // Serial.print(s_current_time);
+  // Serial.println();
 
   // VMmv = analogRead(VM_ADC_PIN) * xVMADC / 1000;
   // Serial.print(" - Vmotor: ");
