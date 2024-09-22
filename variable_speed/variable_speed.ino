@@ -1,7 +1,8 @@
 #include "PINDEF.h"
+#include "data_maps.h"
 
 // Global BLE APP variables
-int batteryLevel = 20;
+int batteryLevel = 12;
 bool reverseDirection = false;
 bool reverseSteering = false;
 int maxPower = 100;
@@ -9,7 +10,17 @@ int reversePowerMax = 20;
 int throttleMaxPowerPos = 100;
 int throttleVsPowerMap = 50;
 bool updatedSettings = false;
+
+int batteryCellCountHW = 3;
+bool reverseDirectionHW = false;
+bool reverseSteeringHW = false;
+int maxPowerHW = 100;
+int reversePowerMaxHW = 20;
+int throttleMaxPowerPosHW = 100;
+int throttleVsPowerMapHW = 50;
 // END
+
+int SOC = 100;
 
 #include "ble_app.h"
 
@@ -17,7 +28,7 @@ bool updatedSettings = false;
 // const int throttlePin = 32;
 // #define THROTTLE_PIN 36
 // #define WINDOW_SIZE 5
-int throttleMin = 900;
+int throttleMin = 950;
 int throttleMax = 3100;
 int throttleRange = (throttleMax - throttleMin);
 int adcRaw = 0;
@@ -35,7 +46,7 @@ bool BUS_ON = false;
 int R1 = 100000;
 int R2 = 10000;
 // xVMADC = (3300 / 4095) * (R1+R2) / R2; 0.8059 * 5.7
-int xVMADC = 10000; // 8865;
+int xVMADC = 10; // 8865;
 
 int V_BAT   = 0;
 int V_M     = 0;
@@ -139,8 +150,23 @@ void setup() {
 
 void loop() {
 
-  if (updatedSettings == true) {
+  if ( (updatedSettings == true) && (throttle_out < 100) ) {
     Serial.printf("New Battery Voltage: %d\r\n", batteryLevel); // example of referencing the updated
+
+    if (batteryLevel < 13) {
+      batteryCellCountHW = 3;
+    } else if (batteryLevel < 21) {
+      batteryCellCountHW = 5;
+    } else {
+      batteryCellCountHW = 6;
+    }    
+    reverseDirectionHW = reverseDirection;
+    reverseSteeringHW = reverseSteering;
+    maxPowerHW = maxPower;
+    reversePowerMaxHW = reversePowerMax;
+    throttleMaxPowerPosHW = throttleMaxPowerPos;
+    throttleVsPowerMapHW = throttleVsPowerMap;
+    
     updatedSettings = false;
   }
   
@@ -158,11 +184,12 @@ void loop() {
   Temp_4 = read_temp(T4_PIN);
   Temp_5 = read_temp(T5_PIN);
 
+  // Soft start / pre-charge
   bool on_switch = digitalRead(ON_PIN);
-  if ( V_BAT < 600 ) {
+  if ( V_BAT < 6000 ) {
     digitalWrite(CONN_PIN, LOW);
     BUS_ON = false;
-  } else if ( on_switch && (BUS_ON == false) && (V_M > V_BAT - 600) ) {
+  } else if ( on_switch && (BUS_ON == false) && (V_M > V_BAT - 2000) ) {
     digitalWrite(CONN_PIN, HIGH);
     BUS_ON = true;
     delay(100);
@@ -172,13 +199,20 @@ void loop() {
     BUS_ON = false;
   }
 
+  // SOC
+  int cellVoltage = V_BAT / batteryCellCountHW;
+  for (int x = 0; x < 101; x++) {
+    if( cellVoltage > mapSOC[x] ) {
+      SOC = x;
+    }
+  }
+  
   int s_current_time = millis() - s_time;
   
   if (BUS_ON) {
     // Send throttle to MCU
     throttle_out = set_throttle(throttleValue);
     // Write to PWM_MTR_PIN
-    if ( BUS_ON ) { ledcWrite(throttle_channel, throttle_out / 4); }
 
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
@@ -186,8 +220,14 @@ void loop() {
     bool reverse_in = digitalRead(REV_PIN);
     if( reverse_in ) {
       digitalWrite(DIR_MTR_PIN, HIGH);
+      ledcWrite(throttle_channel, throttle_out / 4);
     } else {
       digitalWrite(DIR_MTR_PIN, LOW);
+      if( throttle_out > (reversePowerMaxHW*10) ) {
+        throttle_out = reversePowerMaxHW*10;
+      }   
+      // throttle_out = (throttle_out * reversePowerMaxHW) / 100;
+      ledcWrite(throttle_channel, throttle_out / 4);
     }
 
     // delay(100);
@@ -223,6 +263,18 @@ void loop() {
   // Serial.print(",");
   // Serial.print(s_current_time);
   // Serial.println();
+  
+  Serial.print(Temp_1);
+  Serial.print(" , ");
+  Serial.print(Temp_2);
+  Serial.print(" , ");
+  Serial.print(Temp_3);
+  Serial.print(" , ");
+  Serial.print(Temp_4);
+  Serial.print(" , ");
+  Serial.print(Temp_5);
+  Serial.print(" , ");
+  Serial.println(throttle_out);
 
   // VMmv = analogRead(VM_ADC_PIN) * xVMADC / 1000;
   // Serial.print(" - Vmotor: ");
@@ -264,17 +316,23 @@ int set_throttle(int x){
 int read_temp(int x_pin){
   int raw_read = 0;
   int calculated = 0;
+  int out_temp = 0;
   raw_read = analogRead(x_pin);
-  calculated = raw_read * xVMADC / 1000;
-  return raw_read;
+  calculated = raw_read * 0.806;
+  for (int x = 0; x < 126; x++) {
+    if( calculated < mapTemp[x] ) {
+      out_temp = x;  
+    }
+  }
+  return out_temp;
 }
 
 int read_voltage(int x_pin){
   int raw_read = 0;
   int calculated = 0;
   raw_read = analogRead(x_pin);
-  calculated = raw_read * xVMADC / 1000;
-  return raw_read;
+  calculated = raw_read * xVMADC;
+  return calculated;
 }
 
 int read_current_bat(int x_pin){
@@ -289,7 +347,7 @@ int read_current_mtr(int x_pin){
   int raw_read = 0;
   int calculated = 0;
   raw_read = analogRead(x_pin);
-  calculated = raw_read * xVMADC / 1000;
+  calculated = raw_read * xVMADC / 100;
   return raw_read;
 }
 
