@@ -5,6 +5,8 @@
 #define CONFIG_SERVICE_UUID       "8320b1ab-a552-471c-9ea0-d9fae57fb09b"
 #define NAME_CHARACTERISTIC_UUID  "2bf9ea19-d99d-4354-9268-4f398f4492a8"
 #define POWER_CONFIG_CHARACTERISTIC_UUID  "9aaf2dba-39ae-461f-a716-924e45fb07e3"
+#define TEMPERATURE_CHARACTERISTIC_UUID  "aab09324-034b-4c57-9bb7-8c787bb17025"
+#define VOLTAGE_CURRENT_CHARACTERISTIC_UUID  "f7e44533-0cba-4ccd-b425-97fbb8d9940a"
 
 #define BATTERY_VOLTAGE_INDEX 0
 #define DIRECTION_SETTING_INDEX 1
@@ -18,8 +20,32 @@
 #define ENABLE_REVERSE_BYTE 0xAA
 #define NORMAL_CONFIG_BYTE 0xD
 
+BLECharacteristic *ptestTempCharacteristic;
+BLECharacteristic *pVoltageCurrentCharacteristic;
+
 char settingsConfig[8] = {0};
 std::string settingsConfigStr = settingsConfig;
+
+static void packTemperatureData() {
+  char temps[5] = {0};
+  temps[0] = Temp_1;
+  temps[1] = Temp_2;
+  temps[2] = Temp_3;
+  temps[3] = Temp_4;
+  temps[4] = Temp_5;
+  ptestTempCharacteristic->setValue(temps);
+  ptestTempCharacteristic->notify(true);
+}
+
+static void packVoltageCurrentData() {
+  char data[4] = {0};
+  data[0] = V_BAT & 0xFF;
+  data[1] = (V_BAT >> 8) & 0xFF;
+  data[2] = I_BAT & 0xFF;
+  data[3] = (I_BAT >> 8) & 0xFF;
+  pVoltageCurrentCharacteristic->setValue(data);
+  pVoltageCurrentCharacteristic->notify(true);
+}
 
 static void initializeSettings() {
   reverseDirection = reverseDirectionHW;
@@ -135,6 +161,18 @@ void ble_setup(){
                                        );
   pBatteryVoltageCharacteristic->setValue(settingsConfigStr);
   pBatteryVoltageCharacteristic->setCallbacks(pCallbacks);
+
+  ptestTempCharacteristic = pService->createCharacteristic(
+                                         TEMPERATURE_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ
+                                       );
+  ptestTempCharacteristic->setValue(Temp_1);
+
+  pVoltageCurrentCharacteristic = pService->createCharacteristic(
+                                         VOLTAGE_CURRENT_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ
+                                       );
+  pVoltageCurrentCharacteristic->setValue(Temp_1);
   
   pService->start();
   // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility

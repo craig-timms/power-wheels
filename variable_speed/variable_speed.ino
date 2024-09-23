@@ -279,7 +279,9 @@ void loop() {
   }
 
   if ( (millis() - send_app_timer) > send_app_interval ) {
-    Serial.println("Data sent");
+    Serial.println("Data updated");
+    packTemperatureData();
+    packVoltageCurrentData();
     send_app_timer = millis();
   }
 
