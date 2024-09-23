@@ -53,7 +53,7 @@ void packVoltageCurrentData() {
   data[1] = v_upper > 0 ? v_upper : 0x1;
   data[2] = i_lower > 0 ? i_lower : 0x1;
   data[3] = i_upper > 0 ? i_upper : 0x1;
-  Serial.printf("Voltage Data: %x", (int)data);
+  data[4] = SOC > 0 ? SOC : 0x1;
   dataStr = data;
   pVoltageCurrentCharacteristic->setValue(dataStr);
   pVoltageCurrentCharacteristic->notify(true);
