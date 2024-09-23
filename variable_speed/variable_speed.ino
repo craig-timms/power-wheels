@@ -1,5 +1,6 @@
 #include "PINDEF.h"
 #include "data_maps.h"
+#include <EEPROM.h>
 
 // Global BLE APP variables
 int batteryLevel = 12;
@@ -20,7 +21,18 @@ int throttleMaxPowerPosHW = 100;
 int throttleVsPowerMapHW = 50;
 // END
 
+int V_BAT   = 0;
+int V_M     = 0;
+int I_BAT   = 0;
+int I_M     = 0;
+int Temp_1 = 0;
+int Temp_2 = 0;
+int Temp_3 = 0;
+int Temp_4 = 0;
+int Temp_5 = 0;
 int SOC = 100;
+
+#define EEPROM_SIZE 7
 
 #include "ble_app.h"
 
@@ -48,16 +60,6 @@ int R2 = 10000;
 // xVMADC = (3300 / 4095) * (R1+R2) / R2; 0.8059 * 5.7
 int xVMADC = 10; // 8865;
 
-int V_BAT   = 0;
-int V_M     = 0;
-int I_BAT   = 0;
-int I_M     = 0;
-int Temp_1 = 0;
-int Temp_2 = 0;
-int Temp_3 = 0;
-int Temp_4 = 0;
-int Temp_5 = 0;
-
 // the number of the LED pin
 // const int STATUS = 33;  // 16 corresponds to GPIO16
 // setting PWM properties
@@ -72,6 +74,9 @@ const int r_channel = 2;
 const int l_channel = 4;
 int s_time = millis();
 int s_on_time = 1000;
+
+int send_app_timer = millis();
+int send_app_interval = 1000;
 
 // const int DIR_PIN = 34; // DO
 // const int VREF_PIN = 32; // DO
@@ -100,6 +105,16 @@ int previousPWMValue = 0;
 void setup() {
   Serial.begin(115200);
 
+  EEPROM.begin(EEPROM_SIZE);
+
+  batteryCellCountHW = EEPROM.read(BATTERY_VOLTAGE_INDEX);
+  reverseDirectionHW = EEPROM.read(DIRECTION_SETTING_INDEX);
+  reverseSteeringHW = EEPROM.read(STEERING_SETTING_INDEX);
+  maxPowerHW = EEPROM.read(MAX_POWER_INDEX);
+  reversePowerMaxHW = EEPROM.read(REVERSE_POWER_INDEX);
+  throttleMaxPowerPosHW = EEPROM.read(THROTTLE_MAX_POWER_POS_INDEX);
+  throttleVsPowerMapHW = EEPROM.read(THROTTLE_VS_POWER_MAP_INDEX);
+  
   ble_setup();
   Serial.println("Setup complete. Listening for BLE updates...");
 
@@ -166,9 +181,21 @@ void loop() {
     reversePowerMaxHW = reversePowerMax;
     throttleMaxPowerPosHW = throttleMaxPowerPos;
     throttleVsPowerMapHW = throttleVsPowerMap;
+
+    EEPROM.write(BATTERY_VOLTAGE_INDEX, batteryCellCountHW);
+    EEPROM.write(DIRECTION_SETTING_INDEX, reverseDirectionHW);
+    EEPROM.write(STEERING_SETTING_INDEX, reverseSteeringHW);
+    EEPROM.write(MAX_POWER_INDEX, maxPowerHW);
+    EEPROM.write(REVERSE_POWER_INDEX, reversePowerMaxHW);
+    EEPROM.write(THROTTLE_MAX_POWER_POS_INDEX, throttleMaxPowerPosHW);
+    EEPROM.write(THROTTLE_VS_POWER_MAP_INDEX, throttleVsPowerMapHW);
+
+    EEPROM.commit();
     
     updatedSettings = false;
   }
+
+  // Serial.println(maxPowerHW);
   
   // Get throttle input
   throttleValue = read_throttle();
@@ -251,6 +278,11 @@ void loop() {
     }
   }
 
+  if ( (millis() - send_app_timer) > send_app_interval ) {
+    Serial.println("Data sent");
+    send_app_timer = millis();
+  }
+
   // Serial.print(throttleValue);
   // Serial.print(",");
   // Serial.println(throttle_out);
@@ -264,17 +296,17 @@ void loop() {
   // Serial.print(s_current_time);
   // Serial.println();
   
-  Serial.print(Temp_1);
-  Serial.print(" , ");
-  Serial.print(Temp_2);
-  Serial.print(" , ");
-  Serial.print(Temp_3);
-  Serial.print(" , ");
-  Serial.print(Temp_4);
-  Serial.print(" , ");
-  Serial.print(Temp_5);
-  Serial.print(" , ");
-  Serial.println(throttle_out);
+  // Serial.print(Temp_1);
+  // Serial.print(" , ");
+  // Serial.print(Temp_2);
+  // Serial.print(" , ");
+  // Serial.print(Temp_3);
+  // Serial.print(" , ");
+  // Serial.print(Temp_4);
+  // Serial.print(" , ");
+  // Serial.print(Temp_5);
+  // Serial.print(" , ");
+  // Serial.println(throttle_out);
 
   // VMmv = analogRead(VM_ADC_PIN) * xVMADC / 1000;
   // Serial.print(" - Vmotor: ");
