@@ -23,27 +23,39 @@
 BLECharacteristic *ptestTempCharacteristic;
 BLECharacteristic *pVoltageCurrentCharacteristic;
 
+char temps[8] = {0};
+std::string tempsStr = temps;
+
+char data[8] = {0};
+std::string dataStr = data;
+
 char settingsConfig[8] = {0};
 std::string settingsConfigStr = settingsConfig;
 
-static void packTemperatureData() {
-  char temps[5] = {0};
-  temps[0] = Temp_1;
-  temps[1] = Temp_2;
-  temps[2] = Temp_3;
-  temps[3] = Temp_4;
-  temps[4] = Temp_5;
-  ptestTempCharacteristic->setValue(temps);
+void packTemperatureData() {  
+  temps[0] = Temp_1 > 0 ? (char)Temp_1 : 0xFF;
+  temps[1] = Temp_2 > 0 ? (char)Temp_2 : 0xFF;
+  temps[2] = Temp_3 > 0 ? (char)Temp_3 : 0xFF;
+  temps[3] = Temp_4 > 0 ? (char)Temp_4 : 0xFF;
+  temps[4] = Temp_5 > 0 ? (char)Temp_5 : 0xFF;
+  tempsStr = temps;
+
+  ptestTempCharacteristic->setValue(tempsStr);
   ptestTempCharacteristic->notify(true);
 }
 
-static void packVoltageCurrentData() {
-  char data[4] = {0};
-  data[0] = V_BAT & 0xFF;
-  data[1] = (V_BAT >> 8) & 0xFF;
-  data[2] = I_BAT & 0xFF;
-  data[3] = (I_BAT >> 8) & 0xFF;
-  pVoltageCurrentCharacteristic->setValue(data);
+void packVoltageCurrentData() {
+  char v_upper = (V_BAT >> 8) & 0xFF;
+  char v_lower = V_BAT & 0xFF;
+  char i_upper = (I_BAT >> 8) & 0xFF;
+  char i_lower = I_BAT & 0xFF;
+  data[0] = v_lower > 0 ? v_lower : 0x1;
+  data[1] = v_upper > 0 ? v_upper : 0x1;
+  data[2] = i_lower > 0 ? i_lower : 0x1;
+  data[3] = i_upper > 0 ? i_upper : 0x1;
+  Serial.printf("Voltage Data: %x", (int)data);
+  dataStr = data;
+  pVoltageCurrentCharacteristic->setValue(dataStr);
   pVoltageCurrentCharacteristic->notify(true);
 }
 
@@ -166,13 +178,13 @@ void ble_setup(){
                                          TEMPERATURE_CHARACTERISTIC_UUID,
                                          BLECharacteristic::PROPERTY_READ
                                        );
-  ptestTempCharacteristic->setValue(Temp_1);
+  ptestTempCharacteristic->setValue(tempsStr);
 
   pVoltageCurrentCharacteristic = pService->createCharacteristic(
                                          VOLTAGE_CURRENT_CHARACTERISTIC_UUID,
                                          BLECharacteristic::PROPERTY_READ
                                        );
-  pVoltageCurrentCharacteristic->setValue(Temp_1);
+  pVoltageCurrentCharacteristic->setValue(dataStr);
   
   pService->start();
   // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility

@@ -279,7 +279,7 @@ void loop() {
   }
 
   if ( (millis() - send_app_timer) > send_app_interval ) {
-    Serial.println("Data updated");
+    Serial.printf("Data updated 2 - %d\n", V_BAT);
     packTemperatureData();
     packVoltageCurrentData();
     send_app_timer = millis();
