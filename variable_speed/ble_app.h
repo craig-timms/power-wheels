@@ -21,6 +21,15 @@
 char settingsConfig[8] = {0};
 std::string settingsConfigStr = settingsConfig;
 
+static void initializeSettings() {
+  reverseDirection = reverseDirectionHW;
+  reverseSteering = reverseSteeringHW;
+  maxPower = maxPowerHW;
+  reversePowerMax = reversePowerMaxHW;
+  throttleMaxPowerPos = throttleMaxPowerPosHW;
+  throttleVsPowerMap = throttleVsPowerMap;
+}
+
 static void packSettings() {
   settingsConfig[BATTERY_VOLTAGE_INDEX] = (char)batteryLevel;
   settingsConfig[DIRECTION_SETTING_INDEX] = reverseDirection ? ENABLE_REVERSE_BYTE : NORMAL_CONFIG_BYTE;
@@ -102,6 +111,7 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
 }; //end of callback
 
 void ble_setup(){
+  initializeSettings();
   packSettings();
 
   BLEDevice::init("Power Wheels");
