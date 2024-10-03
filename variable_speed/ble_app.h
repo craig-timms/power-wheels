@@ -20,8 +20,12 @@
 #define ENABLE_REVERSE_BYTE 0xAA
 #define NORMAL_CONFIG_BYTE 0xD
 
+BLEServer *pServer = NULL; // added
 BLECharacteristic *ptestTempCharacteristic;
 BLECharacteristic *pVoltageCurrentCharacteristic;
+
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
 
 char temps[8] = {0};
 std::string tempsStr = temps;
@@ -110,15 +114,27 @@ static void unpackSettings(const char * s){
   packSettings();
 }
 
-class CharacteristicCallback: public BLECharacteristicCallbacks {
-
+class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
       Serial.println("Server Connected");
     };
 
     void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
       Serial.println("Server disconnected");
-    } 
+    }
+};
+
+class CharacteristicCallback: public BLECharacteristicCallbacks {
+
+    // void onConnect(BLEServer* pServer) {
+    //   Serial.println("Server Connected");
+    // };
+
+    // void onDisconnect(BLEServer* pServer) {
+    //   Serial.println("Server disconnected");
+    // } 
 
     void onWrite(BLECharacteristic *pCharacteristic) {
       Serial.println("Received characteristic update");
@@ -148,12 +164,31 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
 
 }; //end of callback
 
+void ble_checkToReconnect() //added
+{
+  // disconnected so advertise
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500); // give the bluetooth stack the chance to get things ready
+    pServer->startAdvertising(); // restart advertising
+    Serial.println("Disconnected: start advertising");
+    oldDeviceConnected = deviceConnected;
+  }
+  // connected so reset boolean control
+  if (deviceConnected && !oldDeviceConnected) {
+    // do stuff here on connecting
+    Serial.println("Reconnected");
+    oldDeviceConnected = deviceConnected;
+  }
+}
+
 void ble_setup(){
   initializeSettings();
   packSettings();
 
   BLEDevice::init("Power Wheels");
   BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
   BLEService *pService = pServer->createService(CONFIG_SERVICE_UUID);
 
   CharacteristicCallback *pCallbacks = new CharacteristicCallback();

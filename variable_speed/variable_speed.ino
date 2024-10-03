@@ -165,6 +165,8 @@ void setup() {
 
 void loop() {
 
+  ble_checkToReconnect();  
+
   if ( (updatedSettings == true) && (throttle_out < 100) ) {
     Serial.printf("New Battery Voltage: %d\r\n", batteryLevel); // example of referencing the updated
 
@@ -279,7 +281,7 @@ void loop() {
   }
 
   if ( (millis() - send_app_timer) > send_app_interval ) {
-    Serial.printf("Data updated 2 - %d\n", V_BAT);
+    // Serial.printf("Data updated 2 - %d\n", V_BAT);
     packTemperatureData();
     packVoltageCurrentData();
     send_app_timer = millis();
