@@ -1,8 +1,12 @@
 #include "PINDEF.h"
 #include "data_maps.h"
 #include <EEPROM.h>
+#define DEBUG_PLOTTER 1
+#define DEBUG_STATES 0
 
 // Global BLE APP variables
+// udatedSettings flag variables
+bool updatedSettings = false;
 int batteryLevel = 12;
 bool reverseDirection = false;
 bool reverseSteering = false;
@@ -10,7 +14,6 @@ int maxPower = 100;
 int reversePowerMax = 20;
 int throttleMaxPowerPos = 100;
 int throttleVsPowerMap = 50;
-bool updatedSettings = false;
 
 int batteryCellCountHW = 3;
 bool reverseDirectionHW = false;
@@ -19,7 +22,61 @@ int maxPowerHW = 100;
 int reversePowerMaxHW = 20;
 int throttleMaxPowerPosHW = 100;
 int throttleVsPowerMapHW = 50;
+
+// updatedControls flag variables
+bool updatedControls = false;
+bool outOfRangeEnable = true;
+bool eStop = false;
+bool remoteEnable = false;
+
+bool updatedControlsHW = false;
+bool outOfRangeEnableHW = true;
+bool eStopHW = false;
+bool remoteEnableHW = false;
 // END
+
+// Send HW data to BT app timer
+int timerApp = millis();
+int timeApp = 1000;
+
+int vehicleState = 0;
+int vehicleStatePrevious = -1;
+int vehicleStateNext = 2;
+// 0 - startup
+// 1 - reset
+// 2 - normal
+// 3 - remote
+// 4 - fault
+
+int hardFault = 0;
+// 0 - no fault
+// 1 - temp1
+// 2 - temp2
+// 3 - temp3
+// 4 - temp4
+// 5 - temp5
+// 6 - OC
+// 7 - OV
+// 8 - MCU
+// 9 - range
+// 10 - eStop
+// 11 - lowBatt
+
+bool reverse = false;
+bool reverseGPIOold = false;
+
+int timerStartup = millis();
+int timeStartup = 4000;
+int timerContactor = millis();
+int timeContactor = 1000;
+int timerReset = millis();
+int timeReset = 2000;
+int timerNormal = millis();
+int timeNormal = 1000;
+int timerFault = millis();
+int timeFault = 1000;
+int timerPlotter = millis();
+int timePlotter = 50;
 
 int V_BAT   = 0;
 int V_M     = 0;
@@ -36,20 +93,38 @@ int SOC = 100;
 
 #include "ble_app.h"
 
-// Potentiometer is connected to GPIO 34 (Analog ADC1_CH6) 
-// const int throttlePin = 32;
-// #define THROTTLE_PIN 36
-// #define WINDOW_SIZE 5
+// Throttle adc input stuff
 int throttleMin = 950;
-int throttleMax = 3100;
+int throttleMax = 3000;
 int throttleRange = (throttleMax - throttleMin);
 int adcRaw = 0;
 int throttleValue = 0;
+
 int INDEX = 0;
 int VALUE = 0;
 int SUM = 0;
 int READINGS[WINDOW_SIZE];
 int AVERAGED = 0;
+
+int INDEXthrottle = 0;
+int VALUEthrottle = 0;
+int SUMthrottle = 0;
+int READINGSthrottle[WINDOW_SIZE];
+int AVERAGEDthrottle = 0;
+
+#define WINDOW_SIZE_vbat 20
+int INDEXvbat = 0;
+int VALUEvbat = 0;
+int SUMvbat = 0;
+int READINGSvbat[WINDOW_SIZE_vbat];
+int AVERAGEDvbat = 0;
+
+#define WINDOW_SIZE_ibat 10
+unsigned long INDEXibat = 0;
+unsigned long VALUEibat = 0;
+unsigned long SUMibat = 0;
+unsigned long READINGSibat[WINDOW_SIZE_ibat];
+unsigned long AVERAGEDibat = 0;
 
 bool BUS_ON = false;
 
@@ -68,15 +143,13 @@ const int resolution = 8;
 const int throttle_channel = 0;
 int throttle_out = 0;
 
+// Steering variables
 const int s_freq = 1000;
 const int s_resolution = 8;
 const int r_channel = 2;
 const int l_channel = 4;
 int s_time = millis();
 int s_on_time = 1000;
-
-int send_app_timer = millis();
-int send_app_interval = 1000;
 
 // const int DIR_PIN = 34; // DO
 // const int VREF_PIN = 32; // DO
@@ -97,8 +170,10 @@ bool nSLEEP = false;
 // Define the maximum change in PWM value per iteration
 const int tDelay = 50;
 const int periods = 1000 / tDelay;
-const int slew = 1000; // full range time
-const int maxChange = ( 1000000 / slew ) / periods;
+const int slewN = 20000; // full range time
+const int slewP = 10000; // full range time
+const int maxChangeN = ( 1000000 / slewN ) / periods;
+const int maxChangeP = ( 1000000 / slewP ) / periods;
 // Variables to store the previous PWM value
 int previousPWMValue = 0;
 
@@ -129,7 +204,7 @@ void setup() {
   ledcSetup(r_channel, s_freq, s_resolution);
   ledcSetup(l_channel, s_freq, s_resolution);
   // attach the channel to the GPIO to be controlled
-  ledcAttachPin(R_DRIVE_PIN, r_channel);
+  ledcAttachPin(R_DRIVE_PIN, r_channel); 
   ledcAttachPin(L_DRIVE_PIN, l_channel);
   // initialize to zero
   ledcWrite(r_channel, 0 );
@@ -165,9 +240,41 @@ void setup() {
 
 void loop() {
 
-  ble_checkToReconnect();  
+  ble_checkToReconnect();
 
-  if ( (updatedSettings == true) && (throttle_out < 100) ) {
+  // DEBUG what is in EEPROM
+  if ( vehicleStatePrevious == -1 ) {
+    Serial.println();
+    Serial.printf("Cell count: %d\r\n", batteryCellCountHW);
+    Serial.printf("Reverse change: %d\r\n", reverseDirectionHW);
+    Serial.printf("Steering change: %d\r\n", reverseSteeringHW);
+    Serial.printf("Max power: %d\r\n", maxPowerHW);
+    Serial.printf("Reverse power: %d\r\n", reversePowerMaxHW);
+    Serial.printf("Throttle position max: %d\r\n", throttleMaxPowerPosHW);
+    Serial.printf("Throttle map: %d\r\n", throttleVsPowerMapHW);
+    Serial.println();
+    vehicleState = 0;
+    vehicleStatePrevious = 0;
+  }
+
+  if ( vehicleState == 4 ) {
+    vehicleState == 4; // fault
+  } else if ( updatedControls ) {
+    if ( eStop ) {
+      vehicleState = 4; // fault
+      timerFault = millis();
+      hardFault = 10;
+      eStopHW = eStop;
+    } else if ( (outOfRangeEnable != outOfRangeEnableHW) || (remoteEnable != remoteEnableHW) ) {
+      vehicleState = 1; // reset
+      timerReset = millis();
+      outOfRangeEnableHW = outOfRangeEnable;
+      remoteEnableHW = remoteEnable;
+    }
+    updatedControls = false;
+  } else if ( updatedSettings ) {
+    vehicleState = 1; // reset
+    timerReset = millis();
     Serial.printf("New Battery Voltage: %d\r\n", batteryLevel); // example of referencing the updated
 
     if (batteryLevel < 13) {
@@ -193,17 +300,30 @@ void loop() {
     EEPROM.write(THROTTLE_VS_POWER_MAP_INDEX, throttleVsPowerMapHW);
 
     EEPROM.commit();
+
+    Serial.println();
+    Serial.println("Settings changed by app:");
+    Serial.printf("Cell count: %d\r\n", batteryCellCountHW);
+    Serial.printf("Reverse change: %d\r\n", reverseDirectionHW);
+    Serial.printf("Steering change: %d\r\n", reverseSteeringHW);
+    Serial.printf("Max power: %d\r\n", maxPowerHW);
+    Serial.printf("Reverse power: %d\r\n", reversePowerMaxHW);
+    Serial.printf("Throttle position max: %d\r\n", throttleMaxPowerPosHW);
+    Serial.printf("Throttle map: %d\r\n", throttleVsPowerMapHW);
+    Serial.println();    
     
     updatedSettings = false;
+    delay(100);
   }
 
-  // Serial.println(maxPowerHW);
+  // DEBUG states
+  if ( DEBUG_STATES && ( vehicleState != vehicleStatePrevious ) ) {
+    Serial.printf("State change (1): %d\r\n", vehicleState);
+    vehicleStatePrevious = vehicleState;
+  }
   
-  // Get throttle input
-  throttleValue = read_throttle();
-
   // Get ADCs ie voltage, currents, and temps
-  V_BAT = read_voltage(VB_ADC_PIN);
+  V_BAT = read_vbat();
   V_M = read_voltage(VM_ADC_PIN);
   I_BAT = read_current_bat(IB_ADC_PIN);
   I_M = read_current_mtr(iM_ADC_PIN);
@@ -213,143 +333,258 @@ void loop() {
   Temp_4 = read_temp(T4_PIN);
   Temp_5 = read_temp(T5_PIN);
 
-  // Soft start / pre-charge
-  bool on_switch = digitalRead(ON_PIN);
-  if ( V_BAT < 6000 ) {
-    digitalWrite(CONN_PIN, LOW);
-    BUS_ON = false;
-  } else if ( on_switch && (BUS_ON == false) && (V_M > V_BAT - 2000) ) {
-    digitalWrite(CONN_PIN, HIGH);
-    BUS_ON = true;
-    delay(100);
-    s_time = millis();
-  } else {
-    digitalWrite(CONN_PIN, LOW);
-    BUS_ON = false;
-  }
-
   // SOC
+  // First power up might fault because of battery
+  // set correctly in app and power cycle vehicle
   int cellVoltage = V_BAT / batteryCellCountHW;
   for (int x = 0; x < 101; x++) {
     if( cellVoltage > mapSOC[x] ) {
       SOC = x;
     }
   }
-  
-  int s_current_time = millis() - s_time;
-  
-  if (BUS_ON) {
-    // Send throttle to MCU
-    throttle_out = set_throttle(throttleValue);
-    // Write to PWM_MTR_PIN
+  if ( (SOC < 20) && (vehicleState != 0) ) {
+    vehicleState = 4;
+    hardFault = 11;
+  }
 
+  // DEBUG states
+  if ( DEBUG_STATES && ( vehicleState != vehicleStatePrevious ) ) {
+    Serial.printf("State change (2): %d\r\n", vehicleState);
+    vehicleStatePrevious = vehicleState;
+  }
+
+  int steer = 1; // left nothing right
+
+  if ( vehicleState == 4 ) { // fault
+    throttleValue = 0;
+    if ( throttle_out < 10 ) {
+      digitalWrite(SLEEP_PIN, LOW);
+      digitalWrite(STATUS_PIN, LOW);
+      // TODO
+      // delay 100
+      // turn off battery
+      // maybe EEPROM fault
+    }
+    // No steering
+    ledcWrite(r_channel, 00);
+    ledcWrite(l_channel, 00);
+  } if ( vehicleState == 0 ) { // startup
+    throttleValue = 0;
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
 
-    bool reverse_in = digitalRead(REV_PIN);
-    if( reverse_in ) {
-      digitalWrite(DIR_MTR_PIN, HIGH);
-      ledcWrite(throttle_channel, throttle_out / 4);
-    } else {
-      digitalWrite(DIR_MTR_PIN, LOW);
-      if( throttle_out > (reversePowerMaxHW*10) ) {
-        throttle_out = reversePowerMaxHW*10;
-      }   
-      // throttle_out = (throttle_out * reversePowerMaxHW) / 100;
-      ledcWrite(throttle_channel, throttle_out / 4);
+    // Soft start / pre-charge
+    bool on_switch = digitalRead(ON_PIN);
+    if ( V_BAT < 4000 ) { // Programming connected
+      digitalWrite(CONN_PIN, LOW);
+      BUS_ON = false;
+      timerContactor = millis();
+      timerStartup = millis();      
+    } else if ( !on_switch ) {
+      // shut down
+      Serial.println("Should be shutting down right now... ");
+      // TODO
+    } else if ( ((millis()-timerStartup) > timeStartup) && BUS_ON ) {
+      Serial.printf("Time up startup: %d\r\n", millis()-timerStartup);
+      if ( remoteEnableHW ) {
+        vehicleState = 3;
+      } else {
+        vehicleState = 2;
+      }
+      Serial.println("Out of startup");
+    } else if ( ((millis()-timerContactor) > timeContactor) && (!BUS_ON) && (V_M > V_BAT - 6000) ) {
+      digitalWrite(CONN_PIN, HIGH);
+      BUS_ON = true;
+      delay(100);
+      s_time = millis();
+      Serial.println("Contactor closed");
     }
-
-    // delay(100);
-    // digitalWrite(DIR_PIN, HIGH);
-    digitalWrite(VREF_PIN, HIGH);
-
-    if ( BUS_ON ) { 
-      if ( s_current_time > 8000 ) {
-        ledcWrite(r_channel, 00);
-        ledcWrite(l_channel, 00);      
-      } else if ( s_current_time > 6000 ){  // Left
-        ledcWrite(r_channel, 00);
-        ledcWrite(l_channel, 50);
-      } else if ( s_current_time > 4000 ){
-        ledcWrite(r_channel, 00);
-        ledcWrite(l_channel, 00);
-      } else if ( s_current_time > 2000 ){  // Right
-        ledcWrite(r_channel, 50);
-        ledcWrite(l_channel, 00);
+    // No steering
+    ledcWrite(r_channel, 00);
+    ledcWrite(l_channel, 00);
+  } else if ( vehicleState == 1 ) { // reset
+    throttleValue = 0;
+    digitalWrite(SLEEP_PIN, HIGH);
+    digitalWrite(STATUS_PIN, HIGH);
+    if ( (millis()-timerReset) > timeReset ) {
+      if ( remoteEnableHW ) {
+        vehicleState = 3;
+      } else {
+        vehicleState = 2;
       }
     }
+    // No steering
+    ledcWrite(r_channel, 00);
+    ledcWrite(l_channel, 00);
+  } else if ( vehicleState == 2 ) {
+    // Get throttle input
+    throttleValue = read_throttle();
+    digitalWrite(SLEEP_PIN, HIGH);
+    digitalWrite(STATUS_PIN, HIGH);
+    digitalWrite(VREF_PIN, HIGH);
+    // Get HW reverse input    
+    bool reverseGPIO = digitalRead(REV_PIN);
+    reverse = !reverseGPIO; // Pull up resistor so reverse switch is low
+    if ( reverseGPIO != reverseGPIOold ) {
+      vehicleState = 1; // reset
+      timerReset = millis();
+      throttleValue = 0;      
+    }
+    reverseGPIOold = reverseGPIO;
+    
+    // No steering in HW control
+    ledcWrite(r_channel, 00);
+    ledcWrite(l_channel, 00);
+  } else if ( vehicleState == 3 ) {
+    // TODO
+    // throttleValue = value from app;
+    // TODO
+    // steer = value from app // 0 - left, 2 - right
+    if ( reverseSteeringHW ) {
+      if ( steer == 0 ) {
+        steer = 2;
+      } else if ( steer == 2 ) {
+        steer = 0;
+      }
+    }
+    // Sending 50% duty, not sure if best thing to do
+    if ( steer == 1 ) {
+      ledcWrite(r_channel, 00);
+      ledcWrite(l_channel, 00);
+    } else if ( steer = 0 ) { 
+      // Left
+      ledcWrite(r_channel, 00);
+      ledcWrite(l_channel, 50);
+    } else if ( steer = 2 ) {
+      // Right
+      ledcWrite(r_channel, 50);
+      ledcWrite(l_channel, 00);
+    }
+    digitalWrite(SLEEP_PIN, HIGH);
+    digitalWrite(STATUS_PIN, HIGH);
+    digitalWrite(VREF_PIN, HIGH);    
   }
 
-  if ( (millis() - send_app_timer) > send_app_interval ) {
+  if ( reverseDirectionHW ) {
+    reverse = !reverse;
+  }
+
+  if( !reverse ) {
+    digitalWrite(DIR_MTR_PIN, HIGH);
+    throttle_out = set_throttle(throttleValue,100);
+    ledcWrite(throttle_channel, throttle_out / 4);
+  } else {
+    digitalWrite(DIR_MTR_PIN, LOW);
+    throttle_out = set_throttle(throttleValue,reversePowerMaxHW);
+    // TODO move max into function(throttleValue, max, map, powers)
+    // if( throttle_out > (reversePowerMaxHW*10) ) {
+    //   throttle_out = reversePowerMaxHW*10;
+    // }   
+    // throttle_out = (throttle_out * reversePowerMaxHW) / 100;
+    ledcWrite(throttle_channel, throttle_out / 4);
+  }
+
+    // Send HW data to BT app
+  if ( (millis() - timerApp) > timeApp ) {
     // Serial.printf("Data updated 2 - %d\n", V_BAT);
     packTemperatureData();
     packVoltageCurrentData();
-    send_app_timer = millis();
+    timerApp = millis();
   }
 
-  // Serial.print(throttleValue);
-  // Serial.print(",");
-  // Serial.println(throttle_out);
-  // Serial.print(",");
-  // Serial.print(V_BAT);
-  // Serial.print(",");
-  // Serial.print(V_M);
-  // Serial.print(",");
-  // Serial.print(I_BAT);
-  // Serial.print(",");
-  // Serial.print(s_current_time);
-  // Serial.println();
-  
-  // Serial.print(Temp_1);
-  // Serial.print(" , ");
-  // Serial.print(Temp_2);
-  // Serial.print(" , ");
-  // Serial.print(Temp_3);
-  // Serial.print(" , ");
-  // Serial.print(Temp_4);
-  // Serial.print(" , ");
-  // Serial.print(Temp_5);
-  // Serial.print(" , ");
-  // Serial.println(throttle_out);
+  // DEBUG states
+  if ( DEBUG_STATES && (vehicleState != vehicleStatePrevious) ) {
+    Serial.printf("State change (3): %d\r\n", vehicleState);
+    vehicleStatePrevious = vehicleState;
+  }
 
-  // VMmv = analogRead(VM_ADC_PIN) * xVMADC / 1000;
-  // Serial.print(" - Vmotor: ");
-  // Serial.println(VMmv);
-  // IM = analogRead(iM_ADC_PIN);
+  // DEBUG plot variables
+  if ( ( DEBUG_PLOTTER ) && (millis() - timerPlotter) > timePlotter ) {
+    Serial.print("SOC:");
+    Serial.print(SOC);
+    Serial.print(",");
+    Serial.print("Throttle:");
+    Serial.print(throttleValue / 10); //
+    Serial.print(",");
+    Serial.print("ThrottleOut:");
+    Serial.print(throttle_out / 10); //
+    Serial.print(",");
+    Serial.print("State:");
+    Serial.print(vehicleState*10);
+    Serial.print(",");
+    Serial.print("Fault:");
+    Serial.print(hardFault*10);
+    Serial.print(",");
+    Serial.print("Vbat:");
+    Serial.print(V_BAT);
+    Serial.print(",");
+    Serial.print("VM:");
+    Serial.print(V_M);
+    Serial.print(",");
+    Serial.print("Ibat:");
+    Serial.print(I_BAT);
+    Serial.print(",");
+    Serial.print("Reverse:");
+    Serial.print(reverse);
+    Serial.print(",");
+    Serial.print("For scale:");
+    Serial.println(100);
+    timerPlotter = millis();
+  }
 
   // delay(50);
 }
 
-int read_throttle(){
+int read_throttle() {
   int result;
-
   SUM = SUM - READINGS[INDEX];       // Remove the oldest entry from the sum
-  VALUE = analogRead(THROTTLE_PIN);        // Read the next sensor value
+  VALUE = analogRead(THROTTLE_PIN);  // Read the next sensor value
   READINGS[INDEX] = VALUE;           // Add the newest reading to the window
   SUM = SUM + VALUE;                 // Add the newest reading to the sum
   INDEX = (INDEX+1) % WINDOW_SIZE;   // Increment the index, and wrap to 0 if it exceeds the window size
   AVERAGED = SUM / WINDOW_SIZE;      // Divide the sum of the window by the window size for the result
   result = ((AVERAGED - throttleMin) * 1000) / throttleRange;
   if (result < 0) { result = 0; }
-  // Serial.print("Thrt: ");
-  // Serial.print(throttleValue);
-
   return result;
 }
 
-int set_throttle(int x){
+int read_vbat() {
+  int result;
+  SUMvbat = SUMvbat - READINGSvbat[INDEXvbat];       // Remove the oldest entry from the sum
+  VALUEvbat = analogRead(VB_ADC_PIN) * 10;  // Read the next sensor value
+  // if ( VALUEvbat > AVERAGEDvbat*1.1 ) {
+  //   VALUEvbat = AVERAGEDvbat*1.1;
+  // } else if ( VALUEvbat < AVERAGEDvbat*0.9 ) {
+  //   VALUEvbat = AVERAGEDvbat*0.9;
+  // }
+  READINGSvbat[INDEXvbat] = VALUEvbat;           // Add the newest reading to the window
+  SUMvbat = SUMvbat + VALUEvbat;                 // Add the newest reading to the sum
+  INDEXvbat = (INDEXvbat+1) % WINDOW_SIZE_vbat;   // Increment the index, and wrap to 0 if it exceeds the window size
+  AVERAGEDvbat = SUMvbat / WINDOW_SIZE_vbat;      // Divide the sum of the window by the window size for the result
+  result = AVERAGEDvbat;
+  if (result < 0) { result = 0; }
+  return result;
+}
+
+int set_throttle(int x, int max) {
 
   // Calculate the error (difference between setpoint and actual value)
   // Limit the change in PWM value to maxChange
-  int deltaPWMValue = constrain(x - previousPWMValue, -maxChange, maxChange);
+  // if ( x > (max*10) ) {
+  //   x = max;
+  // }
+  int deltaPWMValue = constrain(x - previousPWMValue, -maxChangeN, maxChangeP);
   int newPWMValue = previousPWMValue + deltaPWMValue;
+  if ( newPWMValue > (max*10) ) {
+    newPWMValue = max*10;
+  }
   // Update the previous PWM value for the next iteration
   previousPWMValue = newPWMValue;
 
   return newPWMValue;
 }
 
-int read_temp(int x_pin){
+int read_temp(int x_pin) {
   int raw_read = 0;
   int calculated = 0;
   int out_temp = 0;
@@ -363,7 +598,7 @@ int read_temp(int x_pin){
   return out_temp;
 }
 
-int read_voltage(int x_pin){
+int read_voltage(int x_pin) {
   int raw_read = 0;
   int calculated = 0;
   raw_read = analogRead(x_pin);
@@ -372,11 +607,28 @@ int read_voltage(int x_pin){
 }
 
 int read_current_bat(int x_pin){
-  int raw_read = 0;
-  int calculated = 0;
-  raw_read = analogRead(x_pin);
-  calculated = raw_read;
-  return raw_read;
+  unsigned long result;
+  SUMibat = SUMibat - READINGSibat[INDEXibat];       // Remove the oldest entry from the sum
+  VALUEibat = analogRead(x_pin) * 10;  // Read the next sensor value
+  // if ( VALUEvbat > AVERAGEDvbat*1.1 ) {
+  //   VALUEvbat = AVERAGEDvbat*1.1;
+  // } else if ( VALUEvbat < AVERAGEDvbat*0.9 ) {
+  //   VALUEvbat = AVERAGEDvbat*0.9;
+  // }
+  READINGSibat[INDEXibat] = VALUEibat;           // Add the newest reading to the window
+  SUMibat = SUMibat + VALUEibat;                 // Add the newest reading to the sum
+  INDEXibat = (INDEXibat+1) % WINDOW_SIZE_ibat;   // Increment the index, and wrap to 0 if it exceeds the window size
+  AVERAGEDibat = SUMibat / WINDOW_SIZE_ibat;      // Divide the sum of the window by the window size for the result
+  
+  // Vo = Is * Rs * Rl / 5000
+  // Is = Vo * 5000 / ( Rs * Rl )
+  int Rs = 2; // mOhm
+  int Rl = 220; // kOhm
+  unsigned long Vo = (VALUEibat * 100 * 3300) / 4096; // 10-bit: 1024
+  result = (Vo * 5000) / ( 2 * Rs * R1 );
+  if (result < 0) { result = 0; }
+
+  return result;
 }
 
 int read_current_mtr(int x_pin){
