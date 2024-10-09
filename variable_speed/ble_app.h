@@ -166,7 +166,7 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
     // } 
 
     void onWrite(BLECharacteristic *pCharacteristic) {
-      Serial.println("Received characteristic update");
+      // Serial.println("Received characteristic update");
       std::string uuid = pCharacteristic->getUUID().toString().c_str();
       const char * value = pCharacteristic->getValue().c_str();
 
@@ -198,18 +198,22 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
         const char * newValue = pCharacteristic->getValue().data();
         if (strlen(newValue) >= 1) {
           int newThrottle = (int) newValue[0];
-          if (newThrottle > 0 && newThrottle <= 100){
-            newThrottle = 100;
+          // Serial.println(newThrottle);          
+          if (newThrottle >= 0 && newThrottle <= 100){
+            // actually do nothing
+            // newThrottle = 100;
           } else if (newThrottle <= 150){
             newThrottle = 100 - newThrottle;
           }
           throttleCommand = newThrottle;
           updatedThrottle = true;
         } else {
-          Serial.println("Error: Can't update controls");
+          // Serial.println("Error: Can't update throttle");
+          throttleCommand = 0;
         }
       } else {
         Serial.println("Error: received unknown characteristic");
+        throttleCommand = 0;
       }
     }
 

@@ -77,13 +77,15 @@ int timeStartup = 4000;
 int timerContactor = millis();
 int timeContactor = 1000;
 int timerReset = millis();
-int timeReset = 2000;
+int timeReset = 1000;
 int timerNormal = millis();
 int timeNormal = 1000;
 int timerFault = millis();
 int timeFault = 1000;
 int timerPlotter = millis();
 int timePlotter = 50;
+int timerThrottle = millis();
+int timeThrottle = 100;
 
 int V_BAT   = 0;
 int V_M     = 0;
@@ -423,6 +425,11 @@ void loop() {
     // No steering
     ledcWrite(r_channel, 00);
     ledcWrite(l_channel, 00);
+  //
+  //
+  // NORMAL STATE
+  //
+  //
   } else if ( vehicleState == 2 ) {
     // Get throttle input
     throttleValue = read_throttle();
@@ -442,9 +449,43 @@ void loop() {
     // No steering in HW control
     ledcWrite(r_channel, 00);
     ledcWrite(l_channel, 00);
+  //
+  //
+  // REMOTE STATE
+  //
+  //
   } else if ( vehicleState == 3 ) {
     // TODO
-    // throttleValue = value from app;
+    if ( ( (millis() - timerThrottle ) > timeThrottle ) ) { // updatedThrottle
+      
+      // Should not need this
+      // Zero crossing issue on app side
+      // Sometimes at zero crossing throttleCommand jumps to 100
+      // This catches that as an outlier
+      if ( ( throttleCommand * 10 > throttleValue + 600 ) || ( throttleCommand * 10 > throttleValue + 600 ) ) {
+        // do not take command
+      } else {
+        throttleValue = throttleCommand * 10;
+        updatedThrottle = false;
+      // Serial.println(throttleCommand);
+      }
+      
+      if ( (throttleValue < 0) && !reverse ) {
+        throttleValue = 0;
+        reverse = true;
+        vehicleState = 1; // reset
+        timerReset = millis();
+      } else if ( throttleValue < 0 ) {
+        throttleValue = throttleValue * -1;
+      } else if ( (throttleValue >= 0) && reverse ) {
+        throttleValue = 0;
+        reverse = false;
+        vehicleState = 1; // reset
+        timerReset = millis();
+      }
+      timerThrottle = millis();
+    }
+
     // TODO
     // steer = value from app // 0 - left, 2 - right
     if ( reverseSteeringHW ) {
@@ -472,11 +513,12 @@ void loop() {
     digitalWrite(VREF_PIN, HIGH);    
   }
 
+  bool reverse_out = reverse;
   if ( reverseDirectionHW ) {
-    reverse = !reverse;
+    reverse_out = !reverse;
   }
 
-  if( !reverse ) {
+  if( !reverse_out ) {
     digitalWrite(DIR_MTR_PIN, HIGH);
     throttle_out = set_throttle(throttleValue,100);
     ledcWrite(throttle_channel, throttle_out / 4);
@@ -515,9 +557,15 @@ void loop() {
     Serial.print(",");
     Serial.print("ThrottleOut:");
     Serial.print(throttle_out / 10); //
-    Serial.print(",");
+    Serial.print(",");  // throttleCommand
+    Serial.print("ThrottleCmd:");
+    Serial.print(throttleCommand); //
+    Serial.print(","); 
     Serial.print("State:");
     Serial.print(vehicleState*10);
+    Serial.print(",");
+    Serial.print("Rev:");
+    Serial.print( int(reverse)*10 );
     Serial.print(",");
     Serial.print("Fault:");
     Serial.print(hardFault*10);
