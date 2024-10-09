@@ -7,6 +7,8 @@
 #define POWER_CONFIG_CHARACTERISTIC_UUID  "9aaf2dba-39ae-461f-a716-924e45fb07e3"
 #define TEMPERATURE_CHARACTERISTIC_UUID  "aab09324-034b-4c57-9bb7-8c787bb17025"
 #define VOLTAGE_CURRENT_CHARACTERISTIC_UUID  "f7e44533-0cba-4ccd-b425-97fbb8d9940a"
+#define CONTROLS_CHARACTERISTIC_UUID "1887a425-dba7-4fff-93d7-88631d0f0261"
+#define THROTTLE_CHARACTERISTIC_UUID "0ef3fa0f-f388-4d88-bde4-6a4821853785"
 
 #define BATTERY_VOLTAGE_INDEX 0
 #define DIRECTION_SETTING_INDEX 1
@@ -23,6 +25,8 @@
 BLEServer *pServer = NULL; // added
 BLECharacteristic *ptestTempCharacteristic;
 BLECharacteristic *pVoltageCurrentCharacteristic;
+BLECharacteristic *pControlsCharacteristic;
+BLECharacteristic *pThrottleCharacteristic;
 
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -35,6 +39,31 @@ std::string dataStr = data;
 
 char settingsConfig[8] = {0};
 std::string settingsConfigStr = settingsConfig;
+
+#define CONTROL_ENABLED_BYTE 0x1
+#define CONTROL_DISABLED_BYTE 0xAA
+
+#define ESTOP_BYTE 0
+#define OUTOFRANGE_BYTE 1
+#define REMOTEENABLE_BYTE 2
+#define CONTROLS_LEN 3
+
+static void packControlsData() {
+  char data[CONTROLS_LEN+1] = {0};
+  data[ESTOP_BYTE] = eStop ? CONTROL_ENABLED_BYTE : CONTROL_DISABLED_BYTE;
+  data[OUTOFRANGE_BYTE] = outOfRangeEnable ? CONTROL_ENABLED_BYTE : CONTROL_DISABLED_BYTE;
+  data[REMOTEENABLE_BYTE] = remoteEnable ? CONTROL_ENABLED_BYTE : CONTROL_DISABLED_BYTE;
+  pControlsCharacteristic->setValue(data);
+  pControlsCharacteristic->notify(true);
+}
+
+static void unpackControlsData(const char * newData) {
+  eStop = newData[ESTOP_BYTE] == CONTROL_ENABLED_BYTE;
+  outOfRangeEnable = newData[OUTOFRANGE_BYTE] == CONTROL_ENABLED_BYTE;
+  remoteEnable = newData[REMOTEENABLE_BYTE] == CONTROL_ENABLED_BYTE;
+  updatedControls = true;
+  packControlsData();
+}
 
 void packTemperatureData() {  
   temps[0] = Temp_1 > 0 ? (char)Temp_1 : 0xFF;
@@ -157,6 +186,28 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
         pCharacteristic->setValue(settingsConfigStr);
         pCharacteristic->notify(true);
           
+      } else if (uuid == CONTROLS_CHARACTERISTIC_UUID){
+        Serial.println("New controls characteristic");
+        const char * newValue = pCharacteristic->getValue().data();
+        if (strlen(newValue) >= CONTROLS_LEN) {
+          unpackControlsData(newValue);
+        } else {
+          Serial.println("Error: Can't update controls");
+        }
+      } else if (uuid == THROTTLE_CHARACTERISTIC_UUID){
+        const char * newValue = pCharacteristic->getValue().data();
+        if (strlen(newValue) >= 1) {
+          int newThrottle = (int) newValue[0];
+          if (newThrottle > 0 && newThrottle <= 100){
+            newThrottle = 100;
+          } else if (newThrottle <= 150){
+            newThrottle = 100 - newThrottle;
+          }
+          throttleCommand = newThrottle;
+          updatedThrottle = true;
+        } else {
+          Serial.println("Error: Can't update controls");
+        }
       } else {
         Serial.println("Error: received unknown characteristic");
       }
@@ -220,6 +271,22 @@ void ble_setup(){
                                          BLECharacteristic::PROPERTY_READ
                                        );
   pVoltageCurrentCharacteristic->setValue(dataStr);
+
+  pControlsCharacteristic = pService->createCharacteristic(
+                                         CONTROLS_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+  pControlsCharacteristic->setValue(settingsConfigStr);
+  pControlsCharacteristic->setCallbacks(pCallbacks);
+
+  pThrottleCharacteristic = pService->createCharacteristic(
+                                         THROTTLE_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+  pThrottleCharacteristic->setValue(throttleCommand);
+  pThrottleCharacteristic->setCallbacks(pCallbacks);
   
   pService->start();
   // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility

@@ -35,6 +35,13 @@ bool eStopHW = false;
 bool remoteEnableHW = false;
 // END
 
+// updatedThrottle flags
+bool updatedThrottle = false; // This tells you there is a new command from the app
+int throttleCommand = 0;
+
+int throttleCommandHw = 0;// IDK if you need this or not
+// END
+
 // Send HW data to BT app timer
 int timerApp = millis();
 int timeApp = 1000;
