@@ -77,7 +77,7 @@ int timeStartup = 4000;
 int timerContactor = millis();
 int timeContactor = 1000;
 int timerReset = millis();
-int timeReset = 1000;
+int timeReset = 100;
 int timerNormal = millis();
 int timeNormal = 1000;
 int timerFault = millis();
@@ -363,6 +363,7 @@ void loop() {
   }
 
   int steer = 1; // left nothing right
+  bool on_switch = digitalRead(ON_PIN);
 
   if ( vehicleState == 4 ) { // fault
     throttleValue = 0;
@@ -374,6 +375,10 @@ void loop() {
       // turn off battery
       // maybe EEPROM fault
     }
+    if ( throttle_out == 0 ) {
+      Serial.println("Fault Shutdown");
+      digitalWrite(CONN_PIN, LOW);
+    }
     // No steering
     ledcWrite(r_channel, 00);
     ledcWrite(l_channel, 00);
@@ -383,7 +388,6 @@ void loop() {
     digitalWrite(STATUS_PIN, HIGH);
 
     // Soft start / pre-charge
-    bool on_switch = digitalRead(ON_PIN);
     if ( V_BAT < 4000 ) { // Programming connected
       digitalWrite(CONN_PIN, LOW);
       BUS_ON = false;
@@ -391,7 +395,10 @@ void loop() {
       timerStartup = millis();      
     } else if ( !on_switch ) {
       // shut down
-      Serial.println("Should be shutting down right now... ");
+      // Serial.println("Should be shutting down right now... ");
+      // if ( throttle_out == 0 ) {
+      //   digitalWrite(CONN_PIN, LOW);          
+      // }
       // TODO
     } else if ( ((millis()-timerStartup) > timeStartup) && BUS_ON ) {
       Serial.printf("Time up startup: %d\r\n", millis()-timerStartup);
@@ -416,8 +423,11 @@ void loop() {
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
     // if ( (millis()-timerReset) > timeReset ) {
-    if ( throttle_out == 0 ) {
-      if ( remoteEnableHW ) {
+    if ( ( (millis()-timerReset) > timeReset ) && ( throttle_out == 0 ) ) {
+      if ( ( throttle_out == 0 ) && ( !on_switch ) ) {
+        Serial.println("Switch Shutdown");
+        digitalWrite(CONN_PIN, LOW);
+      } else if ( remoteEnableHW ) {
         vehicleState = 3;
       } else {
         vehicleState = 2;
@@ -432,6 +442,9 @@ void loop() {
   //
   //
   } else if ( vehicleState == 2 ) {
+    if ( !on_switch ) {
+      vehicleState = 1;
+    }
     // Get throttle input
     throttleValue = read_throttle();
     digitalWrite(SLEEP_PIN, HIGH);
@@ -456,6 +469,10 @@ void loop() {
   //
   //
   } else if ( vehicleState == 3 ) {
+    if ( !on_switch ) {
+      vehicleState = 1;
+      timerReset = millis();
+    }
     // TODO
     if ( ( (millis() - timerThrottle ) > timeThrottle ) ) { // updatedThrottle
       
