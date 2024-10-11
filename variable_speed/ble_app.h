@@ -187,7 +187,7 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
         pCharacteristic->notify(true);
           
       } else if (uuid == CONTROLS_CHARACTERISTIC_UUID){
-        Serial.println("New controls characteristic");
+        // Serial.println("New controls characteristic");
         const char * newValue = pCharacteristic->getValue().data();
         if (strlen(newValue) >= CONTROLS_LEN) {
           unpackControlsData(newValue);
@@ -198,12 +198,10 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
         const char * newValue = pCharacteristic->getValue().data();
         if (strlen(newValue) >= 1) {
           int newThrottle = (int) newValue[0];
-          // Serial.println(newThrottle);          
-          if (newThrottle >= 0 && newThrottle <= 100){
-            // actually do nothing
-            // newThrottle = 100;
-          } else if (newThrottle <= 150){
+          if (newThrottle > 100 && newThrottle <= 150){
             newThrottle = 100 - newThrottle;
+          } else if (newThrottle < 0 || newThrottle > 150) {
+            newThrottle = 0;
           }
           throttleCommand = newThrottle;
           updatedThrottle = true;
