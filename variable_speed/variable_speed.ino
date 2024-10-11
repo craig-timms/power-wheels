@@ -415,7 +415,8 @@ void loop() {
     throttleValue = 0;
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
-    if ( (millis()-timerReset) > timeReset ) {
+    // if ( (millis()-timerReset) > timeReset ) {
+    if ( throttle_out == 0 ) {
       if ( remoteEnableHW ) {
         vehicleState = 3;
       } else {
