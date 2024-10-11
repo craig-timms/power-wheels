@@ -198,9 +198,9 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
         const char * newValue = pCharacteristic->getValue().data();
         if (strlen(newValue) >= 1) {
           int newThrottle = (int) newValue[0];
-          if (newThrottle > 100 && newThrottle <= 150){
+          if (newThrottle > 100 && newThrottle <= 200){
             newThrottle = 100 - newThrottle;
-          } else if (newThrottle < 0 || newThrottle > 150) {
+          } else if (newThrottle < 0 || newThrottle > 200) {
             newThrottle = 0;
           }
           throttleCommand = newThrottle;
