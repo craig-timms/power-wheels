@@ -1,7 +1,9 @@
 #include "PINDEF.h"
 #include "data_maps.h"
-#include <EEPROM.h>
-#define DEBUG_PLOTTER 1
+// #include <EEPROM.h>
+#include <Preferences.h>
+Preferences preferences;
+#define DEBUG_PLOTTER 0
 #define DEBUG_STATES 0
 
 // Global BLE APP variables
@@ -14,6 +16,7 @@ int maxPower = 100;
 int reversePowerMax = 20;
 int throttleMaxPowerPos = 100;
 int throttleVsPowerMap = 50;
+String deviceName = "no name";
 
 int batteryCellCountHW = 3;
 bool reverseDirectionHW = false;
@@ -22,6 +25,7 @@ int maxPowerHW = 100;
 int reversePowerMaxHW = 20;
 int throttleMaxPowerPosHW = 100;
 int throttleVsPowerMapHW = 50;
+String deviceNameHW = "no name";
 
 // updatedControls flag variables
 bool updatedControls = false;
@@ -34,6 +38,16 @@ bool outOfRangeEnableHW = true;
 bool eStopHW = false;
 bool remoteEnableHW = false;
 // END
+
+
+
+// BATTERY_VOLTAGE_INDEX);
+// DIRECTION_SETTING_INDEX);
+// STEERING_SETTING_INDEX);
+// MAX_POWER_INDEX);
+// REVERSE_POWER_INDEX);
+// THROTTLE_MAX_POWER_POS_INDEX);
+// THROTTLE_VS_POWER_MAP_INDEX);
 
 // updatedThrottle flags
 bool updatedThrottle = false; // This tells you there is a new command from the app
@@ -189,15 +203,26 @@ int previousPWMValue = 0;
 void setup() {
   Serial.begin(115200);
 
-  EEPROM.begin(EEPROM_SIZE);
+  // EEPROM.begin(EEPROM_SIZE);
 
-  batteryCellCountHW = EEPROM.read(BATTERY_VOLTAGE_INDEX);
-  reverseDirectionHW = EEPROM.read(DIRECTION_SETTING_INDEX);
-  reverseSteeringHW = EEPROM.read(STEERING_SETTING_INDEX);
-  maxPowerHW = EEPROM.read(MAX_POWER_INDEX);
-  reversePowerMaxHW = EEPROM.read(REVERSE_POWER_INDEX);
-  throttleMaxPowerPosHW = EEPROM.read(THROTTLE_MAX_POWER_POS_INDEX);
-  throttleVsPowerMapHW = EEPROM.read(THROTTLE_VS_POWER_MAP_INDEX);
+  // batteryCellCountHW = EEPROM.read(BATTERY_VOLTAGE_INDEX);
+  // reverseDirectionHW = EEPROM.read(DIRECTION_SETTING_INDEX);
+  // reverseSteeringHW = EEPROM.read(STEERING_SETTING_INDEX);
+  // maxPowerHW = EEPROM.read(MAX_POWER_INDEX);
+  // reversePowerMaxHW = EEPROM.read(REVERSE_POWER_INDEX);
+  // throttleMaxPowerPosHW = EEPROM.read(THROTTLE_MAX_POWER_POS_INDEX);
+  // throttleVsPowerMapHW = EEPROM.read(THROTTLE_VS_POWER_MAP_INDEX);
+
+  preferences.begin("my-app", false);
+
+  batteryCellCountHW = preferences.getInt("vbat",3);
+  reverseDirectionHW = preferences.getBool("rev",false);
+  reverseSteeringHW = preferences.getBool("steer",false);
+  maxPowerHW = preferences.getInt("maxP",100);
+  reversePowerMaxHW = preferences.getInt("maxR",20);
+  throttleMaxPowerPosHW = preferences.getInt("maxP",100);
+  throttleVsPowerMapHW = preferences.getInt("map",50);
+  deviceNameHW = preferences.getString("name","no name");
   
   ble_setup();
   Serial.println("Setup complete. Listening for BLE updates...");
@@ -300,15 +325,23 @@ void loop() {
     throttleMaxPowerPosHW = throttleMaxPowerPos;
     throttleVsPowerMapHW = throttleVsPowerMap;
 
-    EEPROM.write(BATTERY_VOLTAGE_INDEX, batteryCellCountHW);
-    EEPROM.write(DIRECTION_SETTING_INDEX, reverseDirectionHW);
-    EEPROM.write(STEERING_SETTING_INDEX, reverseSteeringHW);
-    EEPROM.write(MAX_POWER_INDEX, maxPowerHW);
-    EEPROM.write(REVERSE_POWER_INDEX, reversePowerMaxHW);
-    EEPROM.write(THROTTLE_MAX_POWER_POS_INDEX, throttleMaxPowerPosHW);
-    EEPROM.write(THROTTLE_VS_POWER_MAP_INDEX, throttleVsPowerMapHW);
-
-    EEPROM.commit();
+    // EEPROM.write(BATTERY_VOLTAGE_INDEX, batteryCellCountHW);
+    // EEPROM.write(DIRECTION_SETTING_INDEX, reverseDirectionHW);
+    // EEPROM.write(STEERING_SETTING_INDEX, reverseSteeringHW);
+    // EEPROM.write(MAX_POWER_INDEX, maxPowerHW);
+    // EEPROM.write(REVERSE_POWER_INDEX, reversePowerMaxHW);
+    // EEPROM.write(THROTTLE_MAX_POWER_POS_INDEX, throttleMaxPowerPosHW);
+    // EEPROM.write(THROTTLE_VS_POWER_MAP_INDEX, throttleVsPowerMapHW);
+    // EEPROM.commit();
+     
+    preferences.putInt("vbat",batteryCellCountHW);
+    preferences.putBool("rev",reverseDirectionHW);
+    preferences.putBool("steer",reverseSteeringHW);
+    preferences.putInt("maxP",maxPowerHW);
+    preferences.putInt("maxR",reversePowerMaxHW);
+    preferences.putInt("maxP",throttleMaxPowerPosHW);
+    preferences.putInt("map",throttleVsPowerMapHW);
+    preferences.putString("name",deviceNameHW);
 
     Serial.println();
     Serial.println("Settings changed by app:");
