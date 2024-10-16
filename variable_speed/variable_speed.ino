@@ -6,6 +6,10 @@ Preferences preferences;
 #define DEBUG_PLOTTER 0
 #define DEBUG_STATES 0
 
+#define MIN_NAME_LEN 4
+#define MAX_NAME_LEN 32
+#define MAX_NAME_INTERNAL_LEN MAX_NAME_LEN+1
+
 // Global BLE APP variables
 // udatedSettings flag variables
 bool updatedSettings = false;
@@ -16,7 +20,6 @@ int maxPower = 100;
 int reversePowerMax = 20;
 int throttleMaxPowerPos = 100;
 int throttleVsPowerMap = 50;
-String deviceName = "no name";
 
 int batteryCellCountHW = 3;
 bool reverseDirectionHW = false;
@@ -25,7 +28,7 @@ int maxPowerHW = 100;
 int reversePowerMaxHW = 20;
 int throttleMaxPowerPosHW = 100;
 int throttleVsPowerMapHW = 50;
-String deviceNameHW = "no name";
+char deviceNameHW[MAX_NAME_INTERNAL_LEN] = {0};
 
 // updatedControls flag variables
 bool updatedControls = false;
@@ -222,7 +225,15 @@ void setup() {
   reversePowerMaxHW = preferences.getInt("maxR",20);
   throttleMaxPowerPosHW = preferences.getInt("maxP",100);
   throttleVsPowerMapHW = preferences.getInt("map",50);
-  deviceNameHW = preferences.getString("name","no name");
+
+  size_t nameLen = preferences.getBytesLength("name");
+  Serial.printf("Name length: %d\r\n", nameLen);
+  if (nameLen < MIN_NAME_LEN) {
+    const char * defaultName = "My Smooth Scoot";
+    strcpy(deviceNameHW, defaultName);
+  } else {
+    preferences.getBytes("name", deviceNameHW, MAX_NAME_LEN);
+  }
   
   ble_setup();
   Serial.println("Setup complete. Listening for BLE updates...");
@@ -341,7 +352,7 @@ void loop() {
     preferences.putInt("maxR",reversePowerMaxHW);
     preferences.putInt("maxP",throttleMaxPowerPosHW);
     preferences.putInt("map",throttleVsPowerMapHW);
-    preferences.putString("name",deviceNameHW);
+    // name is handled directly in the BLE function so we dont pass strings around
 
     Serial.println();
     Serial.println("Settings changed by app:");

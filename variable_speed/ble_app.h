@@ -172,7 +172,12 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
 
       if (uuid == NAME_CHARACTERISTIC_UUID){
         Serial.println("New name characteristic");
-        Serial.printf("Value: %s\r\n", value);
+        size_t nameLen = strlen(value);
+        if (nameLen >= MIN_NAME_LEN && nameLen <= MAX_NAME_LEN){
+          // Directly put in eeprom so we dont worry about passing string around
+          preferences.putBytes("name", value, nameLen);
+          Serial.printf("Updated name in EEPROM : %s\r\n", value);
+        }
         pCharacteristic->setValue(value);
         pCharacteristic->notify(true);
       } else if (uuid == POWER_CONFIG_CHARACTERISTIC_UUID){
@@ -238,7 +243,7 @@ void ble_setup(){
   initializeSettings();
   packSettings();
 
-  BLEDevice::init("Power Wheels");
+  BLEDevice::init(deviceNameHW);
   BLEServer *pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
@@ -251,7 +256,7 @@ void ble_setup(){
                                          BLECharacteristic::PROPERTY_READ |
                                          BLECharacteristic::PROPERTY_WRITE
                                        );
-  pNameCharacteristic->setValue("Power Wheels Default Device");
+  pNameCharacteristic->setValue(deviceNameHW);
   pNameCharacteristic->setCallbacks(pCallbacks);
 
   BLECharacteristic *pBatteryVoltageCharacteristic = pService->createCharacteristic(
