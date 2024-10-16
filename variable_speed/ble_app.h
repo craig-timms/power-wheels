@@ -9,6 +9,7 @@
 #define VOLTAGE_CURRENT_CHARACTERISTIC_UUID  "f7e44533-0cba-4ccd-b425-97fbb8d9940a"
 #define CONTROLS_CHARACTERISTIC_UUID "1887a425-dba7-4fff-93d7-88631d0f0261"
 #define THROTTLE_CHARACTERISTIC_UUID "0ef3fa0f-f388-4d88-bde4-6a4821853785"
+#define STEERING_CHARACTERISTIC_UUID "9d92a0f8-adc7-4df9-bbfb-61d617a5ce7c"
 
 #define BATTERY_VOLTAGE_INDEX 0
 #define DIRECTION_SETTING_INDEX 1
@@ -27,6 +28,7 @@ BLECharacteristic *ptestTempCharacteristic;
 BLECharacteristic *pVoltageCurrentCharacteristic;
 BLECharacteristic *pControlsCharacteristic;
 BLECharacteristic *pThrottleCharacteristic;
+BLECharacteristic *pSteeringCharacteristic;
 
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -214,6 +216,26 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
           // Serial.println("Error: Can't update throttle");
           throttleCommand = 0;
         }
+      } else if (uuid == STEERING_CHARACTERISTIC_UUID){
+        const char * newValue = pCharacteristic->getValue().data();
+        if (strlen(newValue) >= 1) {
+          char newSteeringCommand = newValue[0];
+          switch (newSteeringCommand) {
+            case STEER_STAIGHT_COMMAND: // intentional fall thru
+            case STEER_RIGHT_COMMAND: // intentional fall thru
+            case STEER_LEFT_COMMAND:
+              steeringCommand = newSteeringCommand;
+              break;
+            default:
+              Serial.println("Error: unrecognized steering command");
+              steeringCommand = STEER_STAIGHT_COMMAND;
+              break;
+          }
+        } else {
+          Serial.println("Error: Can't update steering");
+          steeringCommand = STEER_STAIGHT_COMMAND;
+        }
+        Serial.printf("s: %x\r\n", steeringCommand);
       } else {
         Serial.println("Error: received unknown characteristic");
         throttleCommand = 0;
@@ -294,6 +316,14 @@ void ble_setup(){
                                        );
   pThrottleCharacteristic->setValue(throttleCommand);
   pThrottleCharacteristic->setCallbacks(pCallbacks);
+
+  pSteeringCharacteristic = pService->createCharacteristic(
+                                         STEERING_CHARACTERISTIC_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+  pSteeringCharacteristic->setValue(throttleCommand);
+  pSteeringCharacteristic->setCallbacks(pCallbacks);
   
   pService->start();
   // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility

@@ -10,6 +10,10 @@ Preferences preferences;
 #define MAX_NAME_LEN 32
 #define MAX_NAME_INTERNAL_LEN MAX_NAME_LEN+1
 
+#define STEER_STAIGHT_COMMAND 0xA
+#define STEER_RIGHT_COMMAND 0xD
+#define STEER_LEFT_COMMAND 0xF
+
 // Global BLE APP variables
 // udatedSettings flag variables
 bool updatedSettings = false;
@@ -55,6 +59,7 @@ bool remoteEnableHW = false;
 // updatedThrottle flags
 bool updatedThrottle = false; // This tells you there is a new command from the app
 int throttleCommand = 0;
+char steeringCommand = STEER_STAIGHT_COMMAND;
 
 int throttleCommandHw = 0;// IDK if you need this or not
 // END
@@ -546,6 +551,21 @@ void loop() {
         timerReset = millis();
       }
       timerThrottle = millis();
+
+      /**************************************************CRAIG TODO**********************************************/
+      switch (steeringCommand) {
+        case STEER_RIGHT_COMMAND:
+          // TODO set something to go right
+          break; // this line is important
+        case STEER_LEFT_COMMAND:
+          // TODO set something to go left
+          break; // this line is important
+        case STEER_STAIGHT_COMMAND: // intentional fall thru so unknown command also goes straight
+        default:
+          // TODO set something to go straight
+          break; // this line is important
+      }
+      /**********************************************************************************************************/
     }
 
     // TODO
