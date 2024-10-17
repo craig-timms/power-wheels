@@ -23,6 +23,10 @@
 #define ENABLE_REVERSE_BYTE 0xAA
 #define NORMAL_CONFIG_BYTE 0xD
 
+#define THROTTLE_IS_REVERSE 0xA
+#define THROTTLE_IS_FORWARD 0xF
+#define THROTTLE_IS_OFF 0xFF
+
 BLEServer *pServer = NULL; // added
 BLECharacteristic *ptestTempCharacteristic;
 BLECharacteristic *pVoltageCurrentCharacteristic;
@@ -41,6 +45,9 @@ std::string dataStr = data;
 
 char settingsConfig[8] = {0};
 std::string settingsConfigStr = settingsConfig;
+
+char throttleData[3] = {0};
+std::string throttleDataStr = throttleData;
 
 #define CONTROL_ENABLED_BYTE 0x1
 #define CONTROL_DISABLED_BYTE 0xAA
@@ -77,6 +84,22 @@ void packTemperatureData() {
 
   ptestTempCharacteristic->setValue(tempsStr);
   ptestTempCharacteristic->notify(true);
+}
+
+void packThrottleData(int throttle_out, bool reverse) {
+  if (remoteEnable == false) {
+    int throttleAdjusted = throttle_out / 10;
+    if (throttleAdjusted == 0) {
+      throttleData[0] = THROTTLE_IS_OFF;
+    } else {
+      throttleData[0] = reverse ? THROTTLE_IS_REVERSE : THROTTLE_IS_FORWARD;
+      throttleData[1] = throttleAdjusted;
+    }
+    throttleDataStr = throttleData;
+
+    pThrottleCharacteristic->setValue(throttleDataStr);
+    pThrottleCharacteristic->notify(true);
+  }
 }
 
 void packVoltageCurrentData() {

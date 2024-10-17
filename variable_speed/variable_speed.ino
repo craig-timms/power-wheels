@@ -620,6 +620,7 @@ void loop() {
     // Serial.printf("Data updated 2 - %d\n", V_BAT);
     packTemperatureData();
     packVoltageCurrentData();
+    packThrottleData(throttle_out, reverse);
     timerApp = millis();
   }
 
