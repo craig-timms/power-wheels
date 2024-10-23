@@ -221,6 +221,7 @@ class CharacteristicCallback: public BLECharacteristicCallbacks {
         const char * newValue = pCharacteristic->getValue().data();
         if (strlen(newValue) >= CONTROLS_LEN) {
           unpackControlsData(newValue);
+          steeringCommand = STEER_STAIGHT_COMMAND;
         } else {
           Serial.println("Error: Can't update controls");
         }

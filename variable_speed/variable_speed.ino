@@ -181,6 +181,7 @@ const int r_channel = 2;
 const int l_channel = 4;
 int s_time = millis();
 int s_on_time = 1000;
+int steer = 1; // left nothing right
 
 // const int DIR_PIN = 34; // DO
 // const int VREF_PIN = 32; // DO
@@ -309,6 +310,7 @@ void loop() {
 
   if ( vehicleState == 4 ) {
     vehicleState == 4; // fault
+    steer = 1;
   } else if ( updatedControls ) {
     if ( eStop ) {
       vehicleState = 4; // fault
@@ -321,6 +323,7 @@ void loop() {
       outOfRangeEnableHW = outOfRangeEnable;
       remoteEnableHW = remoteEnable;
     }
+    steer = 1;
     updatedControls = false;
   } else if ( updatedSettings ) {
     vehicleState = 1; // reset
@@ -411,11 +414,11 @@ void loop() {
     vehicleStatePrevious = vehicleState;
   }
 
-  int steer = 1; // left nothing right
   bool on_switch = digitalRead(ON_PIN);
 
   if ( vehicleState == 4 ) { // fault
     throttleValue = 0;
+    steer = 1;
     if ( throttle_out < 10 ) {
       digitalWrite(SLEEP_PIN, LOW);
       digitalWrite(STATUS_PIN, LOW);
@@ -433,6 +436,7 @@ void loop() {
     ledcWrite(l_channel, 00);
   } if ( vehicleState == 0 ) { // startup
     throttleValue = 0;
+    steer = 1;
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
 
@@ -469,6 +473,7 @@ void loop() {
     ledcWrite(l_channel, 00);
   } else if ( vehicleState == 1 ) { // reset
     throttleValue = 0;
+    steer = 1;
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
     // if ( (millis()-timerReset) > timeReset ) {
@@ -510,6 +515,7 @@ void loop() {
     reverseGPIOold = reverseGPIO;
     
     // No steering in HW control
+    steer = 1;
     ledcWrite(r_channel, 00);
     ledcWrite(l_channel, 00);
   //
@@ -556,17 +562,24 @@ void loop() {
       switch (steeringCommand) {
         case STEER_RIGHT_COMMAND:
           // TODO set something to go right
+          steer = 0;
           break; // this line is important
         case STEER_LEFT_COMMAND:
           // TODO set something to go left
+          steer = 2;
           break; // this line is important
         case STEER_STAIGHT_COMMAND: // intentional fall thru so unknown command also goes straight
+          steer = 1;
+          break;        
         default:
           // TODO set something to go straight
+          steer = 1;
           break; // this line is important
       }
       /**********************************************************************************************************/
     }
+
+    Serial.print(steer);
 
     // TODO
     // steer = value from app // 0 - left, 2 - right
@@ -577,22 +590,28 @@ void loop() {
         steer = 0;
       }
     }
+    
+    Serial.print(steer);    
+
     // Sending 50% duty, not sure if best thing to do
     if ( steer == 1 ) {
       ledcWrite(r_channel, 00);
       ledcWrite(l_channel, 00);
-    } else if ( steer = 0 ) { 
+    } else if ( steer == 0 ) { 
       // Left
       ledcWrite(r_channel, 00);
       ledcWrite(l_channel, 50);
-    } else if ( steer = 2 ) {
+    } else if ( steer == 2 ) {
       // Right
-      ledcWrite(r_channel, 50);
+      ledcWrite(r_channel, 150);
       ledcWrite(l_channel, 00);
     }
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
-    digitalWrite(VREF_PIN, HIGH);    
+    digitalWrite(VREF_PIN, HIGH);
+    
+    Serial.println(steer);
+
   }
 
   bool reverse_out = reverse;
