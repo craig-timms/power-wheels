@@ -175,13 +175,20 @@ const int throttle_channel = 0;
 int throttle_out = 0;
 
 // Steering variables
+const int STEER_MAX_DRIVE = (50 * 255) / 100;
+int steerLast = 1;
+int steer = 1; // left nothing right
+bool leftToCenter = false;
+bool rightToCenter = false;
 const int s_freq = 1000;
 const int s_resolution = 8;
 const int r_channel = 2;
 const int l_channel = 4;
+int timerSteer = millis();
+int timeSteer = 100;
+
 int s_time = millis();
-int s_on_time = 1000;
-int steer = 1; // left nothing right
+int s_on_time = 300;
 
 // const int DIR_PIN = 34; // DO
 // const int VREF_PIN = 32; // DO
@@ -384,10 +391,12 @@ void loop() {
   }
   
   // Get ADCs ie voltage, currents, and temps
-  V_BAT = read_vbat();
-  V_M = read_voltage(VM_ADC_PIN);
   I_BAT = read_current_bat(IB_ADC_PIN);
   I_M = read_current_mtr(iM_ADC_PIN);
+  if ( I_BAT < 1000 ) {
+    V_BAT = read_vbat();
+  }
+  V_M = read_voltage(VM_ADC_PIN);
   Temp_1 = read_temp(T1_PIN);
   Temp_2 = read_temp(T2_PIN);
   Temp_3 = read_temp(T3_PIN);
@@ -501,6 +510,7 @@ void loop() {
     }
     // Get throttle input
     throttleValue = read_throttle();
+    throttleValue = ( 100 * throttleValue ) / throttleMaxPowerPos;
     digitalWrite(SLEEP_PIN, HIGH);
     digitalWrite(STATUS_PIN, HIGH);
     digitalWrite(VREF_PIN, HIGH);
@@ -579,38 +589,7 @@ void loop() {
       /**********************************************************************************************************/
     }
 
-    Serial.print(steer);
-
-    // TODO
-    // steer = value from app // 0 - left, 2 - right
-    if ( reverseSteeringHW ) {
-      if ( steer == 0 ) {
-        steer = 2;
-      } else if ( steer == 2 ) {
-        steer = 0;
-      }
-    }
-    
-    Serial.print(steer);    
-
-    // Sending 50% duty, not sure if best thing to do
-    if ( steer == 1 ) {
-      ledcWrite(r_channel, 00);
-      ledcWrite(l_channel, 00);
-    } else if ( steer == 0 ) { 
-      // Left
-      ledcWrite(r_channel, 00);
-      ledcWrite(l_channel, 50);
-    } else if ( steer == 2 ) {
-      // Right
-      ledcWrite(r_channel, 150);
-      ledcWrite(l_channel, 00);
-    }
-    digitalWrite(SLEEP_PIN, HIGH);
-    digitalWrite(STATUS_PIN, HIGH);
-    digitalWrite(VREF_PIN, HIGH);
-    
-    Serial.println(steer);
+    set_steering(steer);
 
   }
 
@@ -621,7 +600,7 @@ void loop() {
 
   if( !reverse_out ) {
     digitalWrite(DIR_MTR_PIN, HIGH);
-    throttle_out = set_throttle(throttleValue,100);
+    throttle_out = set_throttle(throttleValue,maxPower);
     ledcWrite(throttle_channel, throttle_out / 4);
   } else {
     digitalWrite(DIR_MTR_PIN, LOW);
@@ -766,7 +745,7 @@ int read_voltage(int x_pin) {
 int read_current_bat(int x_pin){
   unsigned long result;
   SUMibat = SUMibat - READINGSibat[INDEXibat];       // Remove the oldest entry from the sum
-  VALUEibat = analogRead(x_pin) * 10;  // Read the next sensor value
+  VALUEibat = analogRead(x_pin);  // Read the next sensor value
   // if ( VALUEvbat > AVERAGEDvbat*1.1 ) {
   //   VALUEvbat = AVERAGEDvbat*1.1;
   // } else if ( VALUEvbat < AVERAGEDvbat*0.9 ) {
@@ -780,20 +759,108 @@ int read_current_bat(int x_pin){
   // Vo = Is * Rs * Rl / 5000
   // Is = Vo * 5000 / ( Rs * Rl )
   int Rs = 2; // mOhm
-  int Rl = 220; // kOhm
-  unsigned long Vo = (VALUEibat * 100 * 3300) / 4096; // 10-bit: 1024
-  result = (Vo * 5000) / ( 2 * Rs * R1 );
+  int Rl = 390; // kOhm
+  unsigned long Vo = (AVERAGEDibat * 3300) / 4096L; // 10-bit: 1024
+  result = (1000L * Vo * 1400L) / ( Rs * R1 );
   if (result < 0) { result = 0; }
+
+  Serial.print("currentADC:");
+  Serial.print(AVERAGEDibat);
+  Serial.print(",");
+  Serial.print("current:");
+  Serial.print(result);
+  Serial.print(",");
+  Serial.print("Vo:");
+  Serial.print(Vo);
+  Serial.print(",");
+  Serial.print("scaleHigh:");
+  Serial.print(10000);
+  Serial.print(",");
+  Serial.print("scaleLow:");
+  Serial.print(0);
+  Serial.println();
+  // Serial.print(",");
 
   return result;
 }
 
-int read_current_mtr(int x_pin){
+int read_current_mtr(int x_pin) {
   int raw_read = 0;
   int calculated = 0;
   raw_read = analogRead(x_pin);
   calculated = raw_read * xVMADC / 100;
   return raw_read;
+}
+
+void set_steering(int x) {
+  // TODO
+  // steer = value from app // 0 - left, 2 - right
+  if ( reverseSteeringHW ) {
+    if ( x == 0 ) {
+      x = 2;
+    } else if ( x == 2 ) {
+      x = 0;
+    }
+  }
+
+  int out;
+  if ( x != steerLast ) {
+    timerSteer = millis();
+    if ( x == 1 ) {
+      if ( steerLast == 0 ) {
+        leftToCenter = true;
+        rightToCenter = false;
+      } else {
+        leftToCenter = false;
+        rightToCenter = true;
+      }
+    }
+  }
+  steerLast = x;
+
+  int timeSinceChange = millis() - timerSteer;
+  int scaleOut = 100;
+  if ( timeSinceChange < timeSteer ) {
+    if ( x == 1 ) {
+      scaleOut = 100 - ( ( 100 * timeSinceChange ) / timeSteer );
+    } else {
+      scaleOut = ( 100 * timeSinceChange ) / timeSteer;
+    }
+    out = (STEER_MAX_DRIVE * scaleOut) / 100;
+    if ( leftToCenter ) {
+      // Left
+      ledcWrite(r_channel, 00);
+      ledcWrite(l_channel, out);
+    } else if ( rightToCenter ) {
+      // Right
+      ledcWrite(r_channel, out);
+      ledcWrite(l_channel, 00);
+    } else if ( x == 0 ) {
+      // Left
+      ledcWrite(r_channel, 00);
+      ledcWrite(l_channel, out);
+    } else if ( x == 2 ) {
+      // Right
+      ledcWrite(r_channel, out);
+      ledcWrite(l_channel, 00);
+    }
+  } else {
+    out = STEER_MAX_DRIVE;
+    leftToCenter = false;
+    rightToCenter = false;
+    if ( x == 1 ) {
+      ledcWrite(r_channel, 00);
+      ledcWrite(l_channel, 00);
+    } else if ( x == 0 ) { 
+      // Left
+      ledcWrite(r_channel, 00);
+      ledcWrite(l_channel, out);
+    } else if ( x == 2 ) {
+      // Right
+      ledcWrite(r_channel, out);
+      ledcWrite(l_channel, 00);
+    }
+  }
 }
 
 
